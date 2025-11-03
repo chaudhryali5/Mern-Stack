@@ -47,29 +47,16 @@ export const registerUser = async (req, res) => {
         const result = await newUser.save();
         console.log('created user:', result);
 
-        const mailOptions = {
-            from: `"Ali&Ali" <${process.env.SENDER_EMAIL}>`, // must be the verified Brevo address
-            to: email,
-        
-            subject: 'Welcome to Ali&Ali',
-            text: `Hello ${name},\n\nYour account has been created successfully!\nEmail: ${email}\nUsername: ${username}`,
-            html: `
-        <h2>Welcome ${name}!</h2>
-        <p>Your account has been created successfully.</p>
-        <ul>
-          <li><strong>Email:</strong> ${email}</li>
-          <li><strong>Username:</strong> ${username}</li>
-        </ul>
-        <p>Enjoy the platform!</p>
-      `,
-        };
 
-        try {
-            const info = await transporter.sendMail(mailOptions);
-            console.log('Welcome email sent:', info.messageId);
-        } catch (mailErr) {
-            console.error('MAIL SEND ERROR:', mailErr);
-        }
+        // const mailOptions = {
+        //     from: process.env.SENDER_EMAIL,
+        //     to: newUser.email || email,
+        //     subject:'   Welcome to Ali&Ali',
+        //     text:`Welcome to Ali&Ali websites .Your account has been successfullt created 
+        //     with email id :${email}`
+
+        // };
+        // await transporter.sendMail(mailOptions);
         if (result) {
             return res.send({ status: true, message: "Registered Successfully" });
         } else {
@@ -106,20 +93,20 @@ export const loginUser = async (req, res) => {
             return res.send({ status: false, message: "Password is incorrect" });
         }
 
-        const userToken = jwt.sign({
+        const token = jwt.sign({
             userId: user._id,
             useremail: user.email,
             username: user.username,
         }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-        return res.cookie("userToken", userToken, {
+        return res.cookie("token", token, {
             httpOnly: true,
             secure: false,
             maxAge: 7 * 24 * 60 * 60 * 1000
         }).send({
             status: true,
             message: "User logined successfull",
-            userToken
+            token
         });
 
     } catch (error) {
@@ -141,4 +128,105 @@ export const Logout = async (req, res) => {
         console.error("LOGOUT ERROR:", error);
         return res.send({ status: false, message: "something went wrong" });
     }
-}; 
+};
+
+// export const verifyOtp = async (req, res) => {
+//     try {
+//         const { userId } = req.body;
+
+//         const user = await Users.findbyId(userId);
+//         if (user.isAccountVerified) {
+//             return res.send({ status: false, message: "Account is already verified" })
+//         }
+//         const otp = String(Math.floor(10000 + Math.random() * 90000));
+
+//         user.verifyOtp = otp;
+//         user.verifiedOtpExpAt = Date.now() + 24 * 60 * 60 * 1000;
+
+//         await user.save();
+
+//         const mailOption = {
+//             from: process.env.SENDER_EMAIL,
+//             to: user.email,
+//             subject: 'Account Vrification Otp',
+//             text: `Your OTP is ${otp}.Verify your account with this OTP`
+//         }
+//         await transporter.sendMail(mailOption);
+//         res.send({
+//             status: true,
+//             message: "Verification Otp sent on your Email"
+//         })
+//     } catch (error) {
+//         res.send({ status: false, message: "something went wrong" });
+//     }
+
+// };
+
+export const verifyEmail = async (req, res) => {
+    const { userId, otp } = req.body;
+
+    if (!userId || !otp) {
+        return res.send({
+            status: false,
+            message: "Details Missing"
+        })
+    }
+    try {
+const user=await Users.findbyId(userId);
+if (!user) {
+    return res.send({status:false,message:"User not found"})
+}
+if (user.verifyOtp===''||user.verifyOtp!==otp) {
+    return res.send({status:false,message:"Invalid otp"})
+}
+if (user.verifiedOtpExpAt<Date.now()) {
+    return res.send({status:false,message:"OTP  expired"})
+}
+
+user.isAccountVerified=true;
+user.verifyOtp='';
+user.verifiedOtpExpAt=0;
+
+await user.save();
+return res.send({status:true,message:"Email verified Successfully"})
+
+
+    } catch (error) {
+        res.send({ status: false, message: "something went wrong" });
+    }
+
+}
+
+export const verifyOtp = async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        const user = await Users.findById(userId);
+        if (!user) {
+            return res.send({ status: false, message: "User not found" })
+        }
+        if (user.isAccountVerified) {
+            return res.send({ status: false, message: "Account is already verified" })
+        }
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+        user.verifyOtp = otp;
+        user.verifiedOtpExpAt = Date.now() + 10 * 60 * 1000;
+
+        await user.save();
+
+        const mailOption = {
+            from: process.env.SENDER_EMAIL,
+            to: user.email,
+            subject: 'Account Verification Otp',
+            text: `Your OTP is ${otp}. Verify your account with this OTP. Valid for 10 minutes.`
+        }
+        await transporter.sendMail(mailOption);
+        res.send({
+            status: true,
+            message: "Verification Otp sent on your Email"
+        })
+    } catch (error) {
+        res.send({ status: false, message: "something went wrong" });
+    }
+};
