@@ -6,7 +6,7 @@ const userRoutes = express.Router()
 userRoutes.post('/register',registerUser )
 userRoutes.post('/login',loginUser)
 userRoutes.post('/logout',Logout)
-userRoutes.post('/send-verify-otp',userAuth,verifyOtp);
+userRoutes.post('/send-verify-otp',verifyOtp);
 userRoutes.post('/verify-account',userAuth,verifyEmail);
 
 export default userRoutes;

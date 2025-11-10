@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
 import Users from "../models/userScehma.js";  // matches your file name
 import jwt from 'jsonwebtoken';
-import transporter from '../config/nodemailer.js';
+import validator from 'validator';
+// import transporter from '../config/nodemailer.js';
+import { sendEmail } from '../config/nodemailer.js';
 
 export const registerUser = async (req, res) => {
     const { name, email, username, password } = req.body;
@@ -10,6 +12,10 @@ export const registerUser = async (req, res) => {
         return res.send({ status: false, message: "User details are missing" })
     }
 
+    const isValidePattern = validator.isEmail(email)
+    if (!isValidePattern) {
+        return res.send({ status: false, code: 302, message: "Email pattern will be example@email.com" })
+    }
     try {
         console.log(' Looking for existing user with email:', email, username);
         const user = await Users.findOne({
@@ -47,16 +53,6 @@ export const registerUser = async (req, res) => {
         const result = await newUser.save();
         console.log('created user:', result);
 
-
-        // const mailOptions = {
-        //     from: process.env.SENDER_EMAIL,
-        //     to: newUser.email || email,
-        //     subject:'   Welcome to Ali&Ali',
-        //     text:`Welcome to Ali&Ali websites .Your account has been successfullt created 
-        //     with email id :${email}`
-
-        // };
-        // await transporter.sendMail(mailOptions);
         if (result) {
             return res.send({ status: true, message: "Registered Successfully" });
         } else {
@@ -74,9 +70,11 @@ export const loginUser = async (req, res) => {
     if (!password || (!email && !username)) {
         return res.send({ status: false, message: "Email or Useranme required" })
     }
-
+    const isValidePattern = validator.isEmail(email)
+    if (!isValidePattern) {
+        return res.send({ status: false, code: 302, message: "Email pattern will be example@email.com" })
+    }
     try {
-        // Find user by email OR username
         const user = await Users.findOne({
             $or: [
                 { email: email },
@@ -92,6 +90,9 @@ export const loginUser = async (req, res) => {
         if (!isPasswordMatched) {
             return res.send({ status: false, message: "Password is incorrect" });
         }
+        const content = `
+        <h1>You have successfully loggedin to our system</h1>
+        `;
 
         const token = jwt.sign({
             userId: user._id,
@@ -99,15 +100,12 @@ export const loginUser = async (req, res) => {
             username: user.username,
         }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-        return res.cookie("token", token, {
-            httpOnly: true,
-            secure: false,
-            maxAge: 7 * 24 * 60 * 60 * 1000
-        }).send({
-            status: true,
-            message: "User logined successfull",
-            token
-        });
+        if (token) {
+            sendEmail('chaudhryali2285@gmail.com', "Login Successful! ✨🎉", content)
+            return res.send({ status: true, code: 200, message: "User loggedin successful", token })
+        } else {
+            return res.send({ status: false, message: "Logging failed" })
+        }
 
     } catch (error) {
         console.error("LOGIN ERROR:", error);
@@ -130,38 +128,41 @@ export const Logout = async (req, res) => {
     }
 };
 
-// export const verifyOtp = async (req, res) => {
-//     try {
-//         const { userId } = req.body;
+export const verifyOtp = async (req, res) => {
+    try {
+        const { email } = req.body;
 
-//         const user = await Users.findbyId(userId);
-//         if (user.isAccountVerified) {
-//             return res.send({ status: false, message: "Account is already verified" })
-//         }
-//         const otp = String(Math.floor(10000 + Math.random() * 90000));
+        const user = await Users.findOne({email});
+        if (user.isAccountVerified) {
+            return res.send({ status: false, message: "Account is already verified" })
+        }
+        const otp = String(Math.floor(10000 + Math.random() * 90000));
 
-//         user.verifyOtp = otp;
-//         user.verifiedOtpExpAt = Date.now() + 24 * 60 * 60 * 1000;
+        const content = `Enter this OTP to verify ur account`
 
-//         await user.save();
+        user.verifyOtp = otp;
+        user.verifiedOtpExpAt = Date.now() + 24 * 60 * 60 * 1000;
 
-//         const mailOption = {
-//             from: process.env.SENDER_EMAIL,
-//             to: user.email,
-//             subject: 'Account Vrification Otp',
-//             text: `Your OTP is ${otp}.Verify your account with this OTP`
-//         }
-//         await transporter.sendMail(mailOption);
-//         res.send({
-//             status: true,
-//             message: "Verification Otp sent on your Email"
-//         })
-//     } catch (error) {
-//         res.send({ status: false, message: "something went wrong" });
-//     }
 
-// };
+        await user.save();
 
+        if (user.verifyOtp) {
+            sendEmail('chzain2285@gmail.com', "this is your OTP", content)
+            res.send({
+                status: true,
+                message: "Verification Otp sent on your Email"
+            })
+        } else {
+            res.send({
+                status: true,
+                message: "Verification Otp sent on your Email"
+            })
+        }
+    } catch (error) {
+        res.send({ status: false, message: "something went wrong" });
+    }
+
+};
 export const verifyEmail = async (req, res) => {
     const { userId, otp } = req.body;
 
@@ -172,61 +173,26 @@ export const verifyEmail = async (req, res) => {
         })
     }
     try {
-const user=await Users.findbyId(userId);
-if (!user) {
-    return res.send({status:false,message:"User not found"})
-}
-if (user.verifyOtp===''||user.verifyOtp!==otp) {
-    return res.send({status:false,message:"Invalid otp"})
-}
-if (user.verifiedOtpExpAt<Date.now()) {
-    return res.send({status:false,message:"OTP  expired"})
-}
-
-user.isAccountVerified=true;
-user.verifyOtp='';
-user.verifiedOtpExpAt=0;
-
-await user.save();
-return res.send({status:true,message:"Email verified Successfully"})
-
-
-    } catch (error) {
-        res.send({ status: false, message: "something went wrong" });
-    }
-
-}
-
-export const verifyOtp = async (req, res) => {
-    try {
-        const { userId } = req.body;
-
-        const user = await Users.findById(userId);
+        const user = await Users.findbyId(userId);
         if (!user) {
             return res.send({ status: false, message: "User not found" })
         }
-        if (user.isAccountVerified) {
-            return res.send({ status: false, message: "Account is already verified" })
+        if (user.verifyOtp === '' || user.verifyOtp !== otp) {
+            return res.send({ status: false, message: "Invalid otp" })
         }
-        const otp = String(Math.floor(100000 + Math.random() * 900000));
+        if (user.verifiedOtpExpAt < Date.now()) {
+            return res.send({ status: false, message: "OTP  expired" })
+        }
 
-        user.verifyOtp = otp;
-        user.verifiedOtpExpAt = Date.now() + 10 * 60 * 1000;
+        user.isAccountVerified = true;
+        user.verifyOtp = '';
+        user.verifiedOtpExpAt = 0;
 
         await user.save();
-
-        const mailOption = {
-            from: process.env.SENDER_EMAIL,
-            to: user.email,
-            subject: 'Account Verification Otp',
-            text: `Your OTP is ${otp}. Verify your account with this OTP. Valid for 10 minutes.`
-        }
-        await transporter.sendMail(mailOption);
-        res.send({
-            status: true,
-            message: "Verification Otp sent on your Email"
-        })
+        return res.send({ status: true, message: "Email verified Successfully" })
     } catch (error) {
         res.send({ status: false, message: "something went wrong" });
     }
-};
+
+}
+
